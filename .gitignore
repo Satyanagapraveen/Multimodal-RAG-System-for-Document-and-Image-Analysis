@@ -1,4 +1,22 @@
+# Secret keys - NEVER upload this
 .env
+
+# Virtual environment - too large for GitHub
 venv/
-ENV/
-.venv/
+
+# ChromaDB data files
+chroma_db/
+
+# Extracted images - generated at runtime
+extracted_images/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code settings
+.vscode/
+
+# pytest cache
+.pytest_cache/
