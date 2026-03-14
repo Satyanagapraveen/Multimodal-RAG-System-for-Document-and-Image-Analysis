@@ -71,16 +71,46 @@ def retrieve(query: str, n_results: int = 5) -> dict:
 
     print(f"[Retriever] Found - Text: {len(text_results)}, Images: {len(image_results)}, Tables: {len(table_results)}")
 
-    all_results = text_results + image_results + table_results
+        # Guaranteed modality slots — prevents high text scores 
+    # from drowning out images in cross-modal retrieval
+    top_texts = sorted(
+        text_results,
+        key=lambda x: x["similarity_score"],
+        reverse=True
+    )[:2]
 
-    all_results.sort(key=lambda x: x["similarity_score"], reverse=True)
+    top_images = sorted(
+        image_results,
+        key=lambda x: x["similarity_score"],
+        reverse=True
+    )[:2]
 
-    top_results = all_results[:n_results]
+    top_tables = sorted(
+        table_results,
+        key=lambda x: x["similarity_score"],
+        reverse=True
+    )[:1]
+
+    # Fill remaining slots with best remaining results
+    guaranteed = top_texts + top_images + top_tables
+    guaranteed_ids = {r["chunk_id"] for r in guaranteed}
+
+    remaining = [
+        r for r in (text_results + image_results + table_results)
+        if r["chunk_id"] not in guaranteed_ids
+    ]
+    remaining.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+    fill_count = n_results - len(guaranteed)
+    top_results = guaranteed + remaining[:fill_count]
+
+    # Final sort by score for clean presentation
+    top_results.sort(key=lambda x: x["similarity_score"], reverse=True)
 
     return {
         "query": query,
         "results": top_results,
-        "total_found": len(all_results),
+        "total_found": len(top_results),
         "breakdown": {
             "text": len(text_results),
             "images": len(image_results),
@@ -116,24 +146,38 @@ def format_context_for_generation(retrieval_result: dict) -> dict:
 
         elif content_type == "image":
             image_path = metadata.get("image_path", "")
-            if image_path and os.path.exists(image_path):
-                image_paths.append(image_path)
-                source_ref["snippet"] = image_path
-            text_context.append(
-                f"[Source: {metadata.get('source_document')} | "
-                f"Page {metadata.get('page_number')} | Image]\n"
-                f"An image was found on this page."
-            )
+            if image_path:
+                from pathlib import Path
+                normalized_path = str(Path(image_path).resolve())
+                
+                print(f"[Retriever] Checking image path: {normalized_path}")
+                print(f"[Retriever] Path exists: {os.path.exists(normalized_path)}")
+                
+                if os.path.exists(normalized_path):
+                    image_paths.append(normalized_path)
+                    source_ref["snippet"] = normalized_path
+                else:
+                    # Try the original path as fallback
+                    if os.path.exists(image_path):
+                        image_paths.append(image_path)
+                        source_ref["snippet"] = image_path
+                    else:
+                        print(f"[Retriever] WARNING: Image not found at any path variation")
+                    text_context.append(
+                        f"[Source: {metadata.get('source_document')} | "
+                        f"Page {metadata.get('page_number')} | Image]\n"
+                        f"An image was found on this page."
+                    )
 
-        elif content_type == "table":
-            text_context.append(
-                f"[Source: {metadata.get('source_document')} | "
-                f"Page {metadata.get('page_number')} | Table]\n"
-                f"{item['content']}"
-            )
-            source_ref["snippet"] = item["content"][:200]
+            elif content_type == "table":
+                text_context.append(
+                    f"[Source: {metadata.get('source_document')} | "
+                    f"Page {metadata.get('page_number')} | Table]\n"
+                    f"{item['content']}"
+                )
+                source_ref["snippet"] = item["content"][:200]
 
-        source_references.append(source_ref)
+            source_references.append(source_ref)
 
     return {
         "text_context": "\n\n---\n\n".join(text_context),
