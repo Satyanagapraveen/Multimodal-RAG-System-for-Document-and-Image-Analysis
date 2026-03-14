@@ -43,7 +43,7 @@ multimodal_rag/
 
 ### 1. Clone and create virtual environment
 ```bash
-git clone <repo-url>
+git clone https://github.com/Satyanagapraveen/Multimodal-RAG-System-for-Document-and-Image-Analysis
 cd multimodal_rag
 python -m venv venv
 venv\Scripts\activate        # Windows
