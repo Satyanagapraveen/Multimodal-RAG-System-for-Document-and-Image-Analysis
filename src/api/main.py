@@ -13,6 +13,7 @@ app = FastAPI(
     title="Multimodal RAG API",
     description="A RAG system that understands text, images, and tables from documents",
     version="1.0.0"
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -180,17 +181,20 @@ async def ingest_document(file: UploadFile = File(...)):
             detail=f"Ingestion failed: {str(e)}"
         )
     
-@app.on_event("startup")
-async def startup_event():
-    print("[API] Server starting up...")
-    print("[API] Loading models and connecting to ChromaDB...")
+from contextlib import asynccontextmanager
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("[API] Server starting up...")
     from src.embeddings.model_loader import embedding_model
     from src.vector_store.chroma_manager import get_collection_stats
-
     stats = get_collection_stats()
     print(f"[API] ChromaDB ready: {stats}")
     print(f"[API] Server ready to accept requests")
+    yield
+    # Shutdown
+    print("[API] Server shutting down...")
 
 
 @app.get("/")
