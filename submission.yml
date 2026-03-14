@@ -1,0 +1,53 @@
+project_name: Multimodal RAG System
+author: praveen4503
+date: 2026-03-14
+
+system:
+  api_framework: FastAPI
+  llm: gemini-2.5-flash
+  embedding_model: clip-ViT-B-32
+  vector_database: ChromaDB
+  pdf_parser: PyMuPDF + pdfplumber
+  ocr_engine: EasyOCR
+
+endpoints:
+  base_url: http://localhost:8000
+  query: POST /query
+  ingest: POST /ingest
+  health: GET /health
+  docs: GET /docs
+
+how_to_run:
+  install: pip install -r requirements.txt
+  configure: cp .env.example .env  # add GEMINI_API_KEY
+  ingest: python -c "import os; [__import__('src.vector_store.chroma_manager', fromlist=['ingest_parsed_document']).ingest_parsed_document(__import__('src.ingestion.document_parser', fromlist=['parse_document']).parse_document(f'sample_documents/{f}')) for f in os.listdir('sample_documents') if f.endswith('.pdf')]"
+  start: uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+  test: pytest tests/ -v
+
+test_results:
+  total_tests: 38
+  passed: 38
+  failed: 0
+
+sample_documents:
+  - Attention is all you need.pdf
+  - BERT paper.pdf
+  - Bounding The Fragmentation of B -trees.pdf
+  - CLIP paper.pdf
+  - GAN paper.pdf
+  - GPT-3 paper.pdf
+  - PaLM paper.pdf
+  - RAG paper.pdf
+  - RESNET paper.pdf
+  - word2vec paper.pdf
+
+database_stats:
+  text_chunks: 318
+  image_chunks: 223
+  table_chunks: 71
+  total: 612
+
+performance:
+  avg_response_time_seconds: 5.0
+  max_response_time_seconds: 15.0
+  embedding_dimension: 512

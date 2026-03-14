@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 def client():
     """Creates a TestClient for the FastAPI app."""
     from src.api.main import app
-    return TestClient(app)
+    with TestClient(app, raise_server_exceptions=True) as c:
+        yield c
 
 
 # ── Health Endpoint Tests ────────────────────────────────────────────────────

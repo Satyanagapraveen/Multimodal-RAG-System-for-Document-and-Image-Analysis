@@ -1,7 +1,7 @@
 import os
 import shutil
-import tempfile
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,10 +9,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+SAMPLE_DOCUMENTS_PATH = os.getenv("SAMPLE_DOCUMENTS_PATH", "./sample_documents")
+os.makedirs(SAMPLE_DOCUMENTS_PATH, exist_ok=True)
+
+
+# ── Lifespan ────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("[API] Server starting up...")
+    from src.embeddings.model_loader import embedding_model
+    from src.vector_store.chroma_manager import get_collection_stats
+    stats = get_collection_stats()
+    print(f"[API] ChromaDB ready: {stats}")
+    print("[API] Server ready to accept requests")
+    yield
+    # Shutdown
+    print("[API] Server shutting down...")
+
+
+# ── App ─────────────────────────────────────────────────────────────────────
+
 app = FastAPI(
     title="Multimodal RAG API",
     description="A RAG system that understands text, images, and tables from documents",
-    version="1.0.0"
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -23,14 +45,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SAMPLE_DOCUMENTS_PATH = os.getenv("SAMPLE_DOCUMENTS_PATH", "./sample_documents")
-os.makedirs(SAMPLE_DOCUMENTS_PATH, exist_ok=True)
-
 print("[API] FastAPI app initialized")
+
+
+# ── Request / Response Models ────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
     query: str
     n_results: int = 5
+
 
 class QueryResponse(BaseModel):
     query: str
@@ -41,17 +64,35 @@ class QueryResponse(BaseModel):
     context_chunks_used: int
     retrieval_breakdown: dict
 
+
 class IngestResponse(BaseModel):
     filename: str
     status: str
     chunks_added: dict
     message: str
 
+
 class HealthResponse(BaseModel):
     status: str
     collections: dict
     models_loaded: bool
     message: str
+
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Multimodal RAG API is running",
+        "docs": "/docs",
+        "health": "/health",
+        "endpoints": {
+            "query": "POST /query",
+            "ingest": "POST /ingest",
+            "health": "GET /health"
+        }
+    }
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -75,7 +116,8 @@ async def health_check():
             status_code=500,
             detail=f"Health check failed: {str(e)}"
         )
-    
+
+
 @app.post("/query", response_model=QueryResponse)
 async def query_documents(request: QueryRequest):
 
@@ -114,7 +156,8 @@ async def query_documents(request: QueryRequest):
             status_code=500,
             detail=f"Query processing failed: {str(e)}"
         )
-    
+
+
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest_document(file: UploadFile = File(...)):
 
@@ -134,7 +177,8 @@ async def ingest_document(file: UploadFile = File(...)):
     file_extension = supported_types[file.content_type]
     safe_filename = Path(file.filename).stem
     safe_filename = "".join(
-        c for c in safe_filename if c.isalnum() or c in (' ', '-', '_')
+        c for c in safe_filename
+        if c.isalnum() or c in (' ', '-', '_')
     ).strip()
     final_filename = f"{safe_filename}{file_extension}"
     save_path = os.path.join(SAMPLE_DOCUMENTS_PATH, final_filename)
@@ -170,7 +214,7 @@ async def ingest_document(file: UploadFile = File(...)):
                 filename=final_filename,
                 status="success",
                 chunks_added={"image_chunks_added": added, "total_added": added},
-                message=f"Successfully ingested image with OCR"
+                message="Successfully ingested image with OCR"
             )
 
     except Exception as e:
@@ -180,32 +224,3 @@ async def ingest_document(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Ingestion failed: {str(e)}"
         )
-    
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("[API] Server starting up...")
-    from src.embeddings.model_loader import embedding_model
-    from src.vector_store.chroma_manager import get_collection_stats
-    stats = get_collection_stats()
-    print(f"[API] ChromaDB ready: {stats}")
-    print(f"[API] Server ready to accept requests")
-    yield
-    # Shutdown
-    print("[API] Server shutting down...")
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Multimodal RAG API is running",
-        "docs": "/docs",
-        "health": "/health",
-        "endpoints": {
-            "query": "POST /query",
-            "ingest": "POST /ingest",
-            "health": "GET /health"
-        }
-    }
