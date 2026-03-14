@@ -2,6 +2,7 @@ import os
 import chromadb
 from chromadb.config import Settings
 from dotenv import load_dotenv
+from pathlib import Path
 from src.embeddings.model_loader import embed_text, embed_image, get_embedding_dimension
 
 load_dotenv()
@@ -54,6 +55,12 @@ def add_text_chunks(chunks: list[dict]) -> int:
 
         content = chunk["content"]
 
+        # Filter out low-quality table extractions
+        meaningful_chars = len([c for c in content if c.isalnum()])
+        if meaningful_chars < 20:
+            print(f"[ChromaManager] Skipping low-quality table: {chunk['metadata']['chunk_id']}")
+            continue
+
         embedding = embed_text(content)
 
         text_collection.add(
@@ -93,6 +100,12 @@ def add_image_chunks(chunks: list[dict]) -> int:
         else:
             embedding = embed_text(chunk["content"])
             print(f"[ChromaManager] Image not found, using text embedding for: {chunk_id}")
+
+                # Normalize the image path before storing
+        if "image_path" in chunk["metadata"]:
+            chunk["metadata"]["image_path"] = str(
+                Path(chunk["metadata"]["image_path"]).resolve()
+            )
 
         image_collection.add(
             ids=[chunk_id],
